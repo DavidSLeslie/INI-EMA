@@ -7,6 +7,9 @@ David S Leslie
 d.leslie@lancaster.ac.uk
 """
 
+import numpy as np
+import random
+
 class ActivationGameCharacter:
     """
     Class representing a character in the game
@@ -14,9 +17,10 @@ class ActivationGameCharacter:
     - chartype: the type of the character (valid types stored in allowed_types)
     - range: the range of detection/influence of the character, determined by type
     - location: a list of length 2 giving the location in the world
-    - IsEnchanted: a Boolean indicating whether the character is currently enchanted
-    - IsEnchanting: a GameCharacter which this GameCharacter is enchanting
-    - IsObserved: a Boolean indicating whether this character has been observed yet
+    - isEnchanted: a Boolean indicating whether the character is currently enchanted
+    - isEnchanting: a GameCharacter which this GameCharacter is enchanting
+    - couldEnchant: a set of GameCharacters that are in range and have been observed
+    - isObserved: a Boolean indicating whether this character has been observed yet
     Methods are:
     - enchant: set the agent to enchanted
     - disenchant: remove the enchanted status of this agent and all recursively enchanted agents
@@ -37,7 +41,7 @@ class ActivationGameCharacter:
         elif chartype == "knight":
             self.range = 4
         else:
-            self.range = None
+            self.range = 0
         
         # Check and store the character's location
         try:
@@ -75,11 +79,12 @@ class ActivationGameCharacter:
         """
         Method to take actions when the character is observed
         """
+        if self.isObserved == False:
+            for char in world.characters:
+                if char.inRange(self.location):
+                    char.couldEnchant.add(self)
         self.isObserved = True
-        for char in world.characters:
-            if char.inRange(self.location):
-                char.couldEnchant.add(self)
-
+        
     
     def inRange(target_location):
         """
@@ -124,8 +129,15 @@ class ActivationGameCharacter:
             for char in world.characters:
                 if self.inRange(char.location):
                     char.observe(world)
+            # Need to change the obs_mask of the world too, so that we know which locations are known to be empty
+            # Just using a loop here. There are probably better ways, but I can't be bothered to be clever about
+            # handling the edges of the world
+            for ii in range(max(self.location[0]-self.range,0),min(self.location[0]+self.range,self.gridheight)):
+                for jj in range(max(self.location[1]-self.range,0),min(self.location[1]+self.range,self.gridwidth)):
+                    world.obs_mask[ii,jj] = True
         elif isinstance(action,GameCharacter):
-            if not self.CouldEnchant(action):
+            # if the action is a suitable character in the game, enchant that character
+            if action not in self.CouldEnchant:
                 raise ValueError("Enchantment target at {action.location} is not enchantable right now")
             action.enchant()
             self.isEnchanting = action
@@ -133,3 +145,81 @@ class ActivationGameCharacter:
             raise ValueError(f"Character action is {action} but must either be 'Sense' or a character to enchant")
 
 
+class ActivationGameWorld:
+    """
+    A game world for the activation game
+    """
+    def __init__(gridsize = 20, composition=[10,10,4], seed = None):
+        """
+        Docstring for __init__
+        
+        :param gridsize: size of the square game grid
+        :param composition: a list of integers with 
+        """
+
+        # Check and process inputs
+        if isinstance(gridsize,int) and (gridsize > 0):
+            self.gridwidth = gridsize
+            self.gridheight = gridsize
+        else:
+            raise ValueError(f"gridsize ({gridsize}) miust be a positive integer")
+
+        try:
+            nfarmers, nknights, nkings = composition
+        except:
+            raise ValueError("composition must be a list/tuple of form [nfarmers,nknights,nkings]")
+        if not isinstance(nfarmers,int) or not isinstance(nknights,int) or not isinstance(nkings,int):
+            raise ValueError("The entries in composition must be integers")
+        
+        # Set the seed if it has been passed
+        if seed is not None:
+            random.seed(seed)
+
+
+        # Declare the whole grid to be unobserved
+        self.obs_mask = np.zeros((self.gridheight,self.gridwidth), dtype = np.bool)
+
+
+
+        # Sample a set of locations for the characters uniformly across the grid
+        character_locations = [divmod(ii,self.gridwidth) 
+                               for ii in random.sample(range(self.gridwidth*self.gridheight),
+                                                       nfarmers+nknights+nkings)
+                                ]
+        
+        # Allocate characters to these locations
+        self.characters = [ActivationGameCharacter("Farmer",loc) for loc in character_locations[:nfarmers]]
+        self.characters.extend(
+            [ActivationGameCharacter("Knight",loc) for loc in character_locations[nfarmers:(nfarmers+nknights)]]
+        )
+        self.characters.extend(
+            [ActivationGameCharacter("King",loc) for loc in character_locations[(nfarmers+nknights):]]
+        )
+
+        # Activate the first farmer
+        self.characters[0].enchant()
+        self.characters[0].observe()
+
+
+    def get_actions():
+        """
+        This method returns all the valid actions in the world
+        The return value is a list of locations of the initiating agent, and either "Sense" or the location of an enchantable agent
+        The reason for the format is so that we can use it reasonably in RL algorithms
+        
+        We assume for now that an already enchanted agent cannot be enchanted again by a different enchantress,
+        but this is an interesting proposition - could we pass off the enchantment to someone else?
+        """
+
+        sense_actions = [[char.location,"Sense"] for char in self.characters if char.isEnchanted]
+        # This is horribly loopy...
+        enchant_actions = []
+        for char in self.characters:
+            if char.isEnchanted:
+                for target in char.couldEnchant:
+                    enchant_actions.extend([char.location,target.location])
+        
+        actions = sense_actions + enchant_actions
+
+        return actions
+            
