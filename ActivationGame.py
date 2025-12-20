@@ -31,14 +31,14 @@ class ActivationGameCharacter:
     def __init__(self, chartype, location=(-1,-1)):
         
         # Check and stoee the character's type
-        allowed_types = ["farmer","knight","king"]
+        allowed_types = ["Farmer","Knight","King"]
         if chartype not in allowed_types:
-            raise ValueError("chartype is {chartype} but must be one of {allowed_types}")
+            raise ValueError(f"chartype is {chartype} but must be one of {allowed_types}")
         self.chartype = chartype
         # Allocate the range based on the type
-        if chartype == "farmer":
+        if chartype == "Farmer":
             self.range = 3
-        elif chartype == "knight":
+        elif chartype == "Knight":
             self.range = 4
         else:
             self.range = 0
@@ -47,7 +47,7 @@ class ActivationGameCharacter:
         try:
             x,y = location
         except:
-            raise ValueError("location is {location} but needs to be a tuple with two entries")
+            raise ValueError(f"location is {location} but needs to be a tuple with two entries")
         self.location = [x,y]
 
         # Characters start non-enchanted and non-observed
@@ -57,13 +57,13 @@ class ActivationGameCharacter:
         self.isObserved = False
 
 
-    def enchant():
+    def enchant(self):
         """
         Method to set the enchanted status of the character
         """
         self.isEnchanted = True
 
-    def disenchant():
+    def disenchant(self):
         """
         Method to remove the enchanted status of the character.
         Need to recursively disenchant all "children" too
@@ -75,7 +75,7 @@ class ActivationGameCharacter:
             self.isEnchanting.disenchant()
             self.isEnchanting = None
     
-    def observe(world):
+    def observe(self,world):
         """
         Method to take actions when the character is observed
         """
@@ -86,7 +86,7 @@ class ActivationGameCharacter:
         self.isObserved = True
         
     
-    def inRange(target_location):
+    def inRange(self,target_location):
         """
         Docstring for inRange
         
@@ -97,7 +97,7 @@ class ActivationGameCharacter:
         try:
             x, y = target_location
         except:
-            raise ValueError("target_location is {target_location} but needs to be a tuple with two entries")
+            raise ValueError(f"target_location is {target_location} but needs to be a tuple with two entries")
         
         if (abs(x-self.location[0])<=self.range) and (abs(y-self.location[1])<=self.range):
             return True
@@ -105,7 +105,7 @@ class ActivationGameCharacter:
             return False
 
 
-    def step(action,world):
+    def step(self,action,world):
         """
         Method for acting int thr world
         
@@ -149,7 +149,7 @@ class ActivationGameWorld:
     """
     A game world for the activation game
     """
-    def __init__(gridsize = 20, composition=[10,10,4], seed = None):
+    def __init__(self,gridsize = 20, composition=[10,10,4], seed = None):
         """
         Docstring for __init__
         
@@ -198,10 +198,10 @@ class ActivationGameWorld:
 
         # Activate the first farmer
         self.characters[0].enchant()
-        self.characters[0].observe()
+        self.characters[0].observe(self)
 
 
-    def get_actions():
+    def get_actions(self):
         """
         This method returns all the valid actions in the world
         The return value is a list of locations of the initiating agent, and either "Sense" or the location of an enchantable agent
