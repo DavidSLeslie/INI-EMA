@@ -107,7 +107,7 @@ class ActivationGameCharacter:
 
     def step(self,action,world):
         """
-        Method for acting int thr world
+        Method for acting int the world
         
         :param action: the action to take. Either "sense" or a character to enchant
         :param world: the list of characters in the world
@@ -118,13 +118,13 @@ class ActivationGameCharacter:
         if self.isEnchanted == False:
             raise RuntimeError(f"Character {self.location} is not enchanted but has been asked to perform an action")
         if self.chartype not in ["farmer","knight"]:
-            raise ValueError("Only farmers and knights can sense the world")
+            raise ValueError("Only farmers and knights can act in the world")
         
         # If asked to take an action, any existing enchantments are broken
         if self.isEnchanted:
             self.disenchant()
 
-        if char_action == "Sense":
+        if action == "Sense":
             # Sensing means that we observe all the in-range characters
             for char in world.characters:
                 if self.inRange(char.location):
@@ -135,7 +135,7 @@ class ActivationGameCharacter:
             for ii in range(max(self.location[0]-self.range,0),min(self.location[0]+self.range,self.gridheight)):
                 for jj in range(max(self.location[1]-self.range,0),min(self.location[1]+self.range,self.gridwidth)):
                     world.obs_mask[ii,jj] = True
-        elif isinstance(action,GameCharacter):
+        elif isinstance(action,ActivationGameCharacter):
             # if the action is a suitable character in the game, enchant that character
             if action not in self.CouldEnchant:
                 raise ValueError("Enchantment target at {action.location} is not enchantable right now")
@@ -175,12 +175,24 @@ class ActivationGameWorld:
         if seed is not None:
             random.seed(seed)
 
+        # Sample a world until we get a solvable one
+        self.sample_world(composition)
+        while not self.is_solvable():
+            print("Resampling world - previous world was not solvable")
+            self.sample_world(composition)
+
 
         # Declare the whole grid to be unobserved
         self.obs_mask = np.zeros((self.gridheight,self.gridwidth), dtype = np.bool)
 
+        # Activate the first farmer
+        self.characters[0].enchant()
+        self.characters[0].observe(self)
 
-
+    def sample_world(self,composition):
+        """
+        Method to sample a new world configuration
+        """
         # Sample a set of locations for the characters uniformly across the grid
         character_locations = [divmod(ii,self.gridwidth) 
                                for ii in random.sample(range(self.gridwidth*self.gridheight),
@@ -196,9 +208,31 @@ class ActivationGameWorld:
             [ActivationGameCharacter("King",loc) for loc in character_locations[(nfarmers+nknights):]]
         )
 
-        # Activate the first farmer
-        self.characters[0].enchant()
+    def is_solvable(self):
+        """
+        Method to check whether the current world is solvable
+        Returns True if it is, False otherwise
+        """
+
+        # First, observe from the first farmer
         self.characters[0].observe(self)
+
+        # Now see which characters can be enchanted recursively
+        to_check = [self.characters[0]]
+        enchanted = set()
+        while len(to_check) > 0:
+            current = to_check.pop()
+            enchanted.add(current)
+            for target in current.couldEnchant:
+                if target not in enchanted:
+                    to_check.append(target)
+        
+        # Now see if all kings are in the enchanted set
+        for char in self.characters:
+            if char.chartype == "King":
+                if char not in enchanted:
+                    return False
+        return True
 
 
     def get_actions(self):
