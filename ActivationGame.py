@@ -279,3 +279,28 @@ class ActivationGameWorld:
                 target_index = target[1]*self.gridheight + target[0]
                 enchant_action_index = initiator_index*(self.gridheight*self.gridwidth) + target_index
                 action_mask[enchant_action_index] = True
+
+    def render(self):
+        """
+        Method to render the current world state to the console
+        """
+
+        grid = np.full((self.gridheight,self.gridwidth), fill_value=' . ')
+        for char in self.characters:
+            if char.chartype == "Farmer":
+                if char.isEnchanting is not None:
+                    symbol = f"F{self.isEnchanting.location[0]}{self.isEnchanting.location[1]}"
+                else:
+                    symbol = ' F ' if char.isEnchanted else ' f '
+            elif char.chartype == "Knight":
+                if char.isEnchanting is not None:
+                    symbol = f"K{self.isEnchanting.location[0]}{self.isEnchanting.location[1]}"
+                else:
+                    symbol = ' K ' if char.isEnchanted else ' k '
+            else:
+                symbol = ' R ' if char.isEnchanted else ' r '
+            grid[char.location[0],char.location[1]] = symbol
+        
+        for ii in range(self.gridheight):
+            print(''.join(grid[ii,:]))
+        print("\n")
