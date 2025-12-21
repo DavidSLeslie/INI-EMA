@@ -214,23 +214,23 @@ class ActivationGameWorld:
         Returns True if it is, False otherwise
         """
 
-        # First, observe from the first farmer
-        self.characters[0].observe(self)
+        to_expand = [self.characters[0]]
+        could_be_enchanted = set(self.characaters[0])
 
-        # Now see which characters can be enchanted recursively
-        to_check = [self.characters[0]]
-        enchanted = set()
-        while len(to_check) > 0:
-            current = to_check.pop()
-            enchanted.add(current)
-            for target in current.couldEnchant:
-                if target not in enchanted:
-                    to_check.append(target)
-        
+        # Recuresively extend the putative enchantment set
+        while len(to_expand) > 0:
+            current = to_expand.pop()
+            could_be_enchanted.add(current)
+            # Add all characters in range from the current char to the to_expand list
+            # if they have not already been expanded from
+            for char in self.characters:
+                if current.inRange(char.location) and char not in enchanted:
+                    to_expand.append(char)
+            
         # Now see if all kings are in the enchanted set
         for char in self.characters:
             if char.chartype == "King":
-                if char not in enchanted:
+                if char not in couuld_be_enchanted:
                     return False
         return True
 
@@ -257,3 +257,25 @@ class ActivationGameWorld:
 
         return actions
             
+    def get_action_mask(self):
+        """
+        Docstring for get_action_mask
+        
+        Returns the action mask for the current world state
+        This is a np.array vector of length gridheight*gridsize+(gridheight*gridsize)**2
+        The first gridheight*gridsize actions are the sense actions.
+        The remainder are the enchant actions, ordered lexicographically
+        by (initiator location, target location)
+        """
+
+        valid_actions = self.get_actions()
+        action_mask = np.zeros(self.gridheight*self.gridwidth + (self.gridheight*self.gridwidth)**2,dtype=np.bool)
+
+        for (initiator,target) in valid_actions:
+            initiator_index = initiator[1]*self.gridheight + initiator[0]
+            if target=="Sense":
+                action_mask[initiator_index] = True
+            else:
+                target_index = target[1]*self.gridheight + target[0]
+                enchant_action_index = initiator_index*(self.gridheight*self.gridwidth) + target_index
+                action_mask[enchant_action_index] = True
