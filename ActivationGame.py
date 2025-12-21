@@ -65,10 +65,10 @@ class ActivationGameCharacter:
 
     def disenchant(self):
         """
-        Method to remove the enchanted status of the character.
-        Need to recursively disenchant all "children" too
+        Method to recursively disenchant all "children"
         """
-        self.isEnchanted = False
+        if self.chartype != "King":
+            self.isEnchanted = False
         if self.isEnchanting is not None:
             # self.isEnchanting is the GameCharacter that we are currently emchanting
             # This character automatically needs to be disenchanted too
@@ -112,18 +112,19 @@ class ActivationGameCharacter:
         :param action: the action to take. Either "sense" or a character to enchant
         :param world: the list of characters in the world
 
-        Sets self.CouldEnchant to be the characters that this agent could choose to enchant
+        Sets self.couldEnchant to be the characters that this agent could choose to enchant
         """
 
         if self.isEnchanted == False:
             raise RuntimeError(f"Character {self.location} is not enchanted but has been asked to perform an action")
-        if self.chartype not in ["farmer","knight"]:
-            raise ValueError("Only farmers and knights can act in the world")
+        if self.chartype not in ["Farmer","Knight"]:
+            raise ValueError("Only Farmers and Knights can act in the world")
         
         # If asked to take an action, any existing enchantments are broken
         if self.isEnchanted:
             self.disenchant()
-
+            self.enchant()
+ 
         if action == "Sense":
             # Sensing means that we observe all the in-range characters
             for char in world.characters:
@@ -132,12 +133,12 @@ class ActivationGameCharacter:
             # Need to change the obs_mask of the world too, so that we know which locations are known to be empty
             # Just using a loop here. There are probably better ways, but I can't be bothered to be clever about
             # handling the edges of the world
-            for ii in range(max(self.location[0]-self.range,0),min(self.location[0]+self.range,self.gridheight)):
-                for jj in range(max(self.location[1]-self.range,0),min(self.location[1]+self.range,self.gridwidth)):
+            for ii in range(max(self.location[0]-self.range,0),min(self.location[0]+self.range+1,world.gridheight)):
+                for jj in range(max(self.location[1]-self.range,0),min(self.location[1]+self.range+1,world.gridwidth)):
                     world.obs_mask[ii,jj] = True
         elif isinstance(action,ActivationGameCharacter):
             # if the action is a suitable character in the game, enchant that character
-            if action not in self.CouldEnchant:
+            if action not in self.couldEnchant:
                 raise ValueError("Enchantment target at {action.location} is not enchantable right now")
             action.enchant()
             self.isEnchanting = action
@@ -177,9 +178,13 @@ class ActivationGameWorld:
 
         # Sample a world until we get a solvable one
         self.sample_world(composition)
-        while not self.is_solvable():
-            print("Resampling world - previous world was not solvable")
+        ntries = 0
+        while not self.is_solvable() and ntries < 100:
+#            print("Resampling world - previous world was not solvable")
+            ntries += 1
             self.sample_world(composition)
+        if ntries > 0:
+            print(f"Sampled {ntries} worlds before finding a solvable world")
 
 
         # Declare the whole grid to be unobserved
@@ -194,6 +199,7 @@ class ActivationGameWorld:
         Method to sample a new world configuration
         """
         # Sample a set of locations for the characters uniformly across the grid
+        nfarmers, nknights, nkings = composition
         character_locations = [divmod(ii,self.gridwidth) 
                                for ii in random.sample(range(self.gridwidth*self.gridheight),
                                                        nfarmers+nknights+nkings)
@@ -215,7 +221,8 @@ class ActivationGameWorld:
         """
 
         to_expand = [self.characters[0]]
-        could_be_enchanted = set(self.characaters[0])
+ #       print(self.characters[0].location)
+        could_be_enchanted = set([self.characters[0]])
 
         # Recuresively extend the putative enchantment set
         while len(to_expand) > 0:
@@ -224,13 +231,13 @@ class ActivationGameWorld:
             # Add all characters in range from the current char to the to_expand list
             # if they have not already been expanded from
             for char in self.characters:
-                if current.inRange(char.location) and char not in enchanted:
+                if current.inRange(char.location) and char not in could_be_enchanted:
                     to_expand.append(char)
             
         # Now see if all kings are in the enchanted set
         for char in self.characters:
             if char.chartype == "King":
-                if char not in couuld_be_enchanted:
+                if char not in could_be_enchanted:
                     return False
         return True
 
@@ -289,12 +296,12 @@ class ActivationGameWorld:
         for char in self.characters:
             if char.chartype == "Farmer":
                 if char.isEnchanting is not None:
-                    symbol = f"F{self.isEnchanting.location[0]}{self.isEnchanting.location[1]}"
+                    symbol = f"F{char.isEnchanting.location[0]}{char.isEnchanting.location[1]}"
                 else:
                     symbol = ' F ' if char.isEnchanted else ' f '
             elif char.chartype == "Knight":
                 if char.isEnchanting is not None:
-                    symbol = f"K{self.isEnchanting.location[0]}{self.isEnchanting.location[1]}"
+                    symbol = f"K{char.isEnchanting.location[0]}{char.isEnchanting.location[1]}"
                 else:
                     symbol = ' K ' if char.isEnchanted else ' k '
             else:
@@ -304,3 +311,37 @@ class ActivationGameWorld:
         for ii in range(self.gridheight):
             print(''.join(grid[ii,:]))
         print("\n")
+
+    def step(self,action):
+        """
+        Method to take a step in the world
+        
+        :param action: the action to take, in the format returned by get_actions
+        """
+
+        try:
+            initiator_loc, target = action
+        except:
+            raise ValueError(f"action is {action} but must be a list/tuple of form [initiator_location,target]")
+
+        # Find the initiating character
+        initiator = None
+        for char in self.characters:
+            if char.location == initiator_loc:
+                initiator = char
+                break
+        if initiator is None:
+            raise ValueError(f"No character found at location {initiator_loc}")
+
+        # Find the target character if needed
+        if target != "Sense":
+            target_char = None
+            for char in self.characters:
+                if char.location == target:
+                    target_char = char
+                    break
+            if target_char is None:
+                raise ValueError(f"No character found at target location {target}")
+            initiator.step(target_char,self)
+        else:
+            initiator.step("Sense",self)
