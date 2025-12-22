@@ -271,19 +271,20 @@ class ActivationGameWorld:
         This is a np.array vector of length gridheight*gridsize+(gridheight*gridsize)**2
         The first gridheight*gridsize actions are the sense actions.
         The remainder are the enchant actions, ordered lexicographically
-        by (initiator location, target location)
+        by (initiator location, target location) where location is location[0]*gridwidth + location[1]
         """
 
         valid_actions = self.get_actions()
+
         action_mask = np.zeros(self.gridheight*self.gridwidth + (self.gridheight*self.gridwidth)**2,dtype=np.bool)
 
         for (initiator,target) in valid_actions:
-            initiator_index = initiator[1]*self.gridheight + initiator[0]
+            initiator_index = initiator[0]*self.gridwidth + initiator[1]
             if target=="Sense":
                 action_mask[initiator_index] = True
             else:
-                target_index = target[1]*self.gridheight + target[0]
-                enchant_action_index = initiator_index*(self.gridheight*self.gridwidth) + target_index
+                target_index = target[0]*self.gridwidth + target[1]
+                enchant_action_index = (initiator_index+1)*(self.gridheight*self.gridwidth) + target_index
                 action_mask[enchant_action_index] = True
 
         return action_mask
