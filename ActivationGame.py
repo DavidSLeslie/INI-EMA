@@ -79,10 +79,9 @@ class ActivationGameCharacter:
         """
         Method to take actions when the character is observed
         """
-        if self.isObserved == False:
-            for char in world.characters:
-                if char.inRange(self.location):
-                    char.couldEnchant.add(self)
+        for char in world.characters:
+            if char.inRange(self.location) and char != self:
+                char.couldEnchant.add(self)
         self.isObserved = True
         
     
@@ -258,7 +257,7 @@ class ActivationGameWorld:
         for char in self.characters:
             if char.isEnchanted:
                 for target in char.couldEnchant:
-                    enchant_actions.extend([char.location,target.location])
+                    enchant_actions.append([char.location,target.location])
         
         actions = sense_actions + enchant_actions
 
@@ -287,30 +286,57 @@ class ActivationGameWorld:
                 enchant_action_index = initiator_index*(self.gridheight*self.gridwidth) + target_index
                 action_mask[enchant_action_index] = True
 
-    def render(self):
+        return action_mask
+    
+    def render(self,observer="Human"):
         """
-        Method to render the current world state to the console
-        """
-
-        grid = np.full((self.gridheight,self.gridwidth), fill_value=' . ')
-        for char in self.characters:
-            if char.chartype == "Farmer":
-                if char.isEnchanting is not None:
-                    symbol = f"F{char.isEnchanting.location[0]}{char.isEnchanting.location[1]}"
-                else:
-                    symbol = ' F ' if char.isEnchanted else ' f '
-            elif char.chartype == "Knight":
-                if char.isEnchanting is not None:
-                    symbol = f"K{char.isEnchanting.location[0]}{char.isEnchanting.location[1]}"
-                else:
-                    symbol = ' K ' if char.isEnchanted else ' k '
-            else:
-                symbol = ' R ' if char.isEnchanted else ' r '
-            grid[char.location[0],char.location[1]] = symbol
+        Docstring for gen_obs, method to generate observations for a player of the game
         
-        for ii in range(self.gridheight):
-            print(''.join(grid[ii,:]))
-        print("\n")
+        :param observer:    if "SB3" then generate sb3-compatible observations
+                            if "Human" then generate human-compatible observations
+        """
+        if observer == "Human" or observer == "Gamesmaster":
+            # Start by noting all the observed grid
+            if observer == "Human":
+                grid = np.full((self.gridheight,self.gridwidth), fill_value='     ')
+                for ii in range(self.gridheight):
+                    for jj in range(self.gridwidth):
+                        if self.obs_mask[ii][jj]:
+                            grid[ii][jj] = '.    '
+            else:
+                grid = np.full((self.gridheight,self.gridwidth), fill_value='.    ')
+            
+            # Now insert the observed characters
+            for char in self.characters:
+                if char.isObserved or observer == "Gamesmaster":
+                    if not char.isObserved:
+                        enchanting_symbol = "x   "
+                    elif char.isEnchanting is not None:
+                        diff0 = char.isEnchanting.location[0]-char.location[0]
+                        diff1 = char.isEnchanting.location[1]-char.location[1]
+                        enchanting_symbol = f"{diff0:+2d}{diff1:+2d}"
+                    else:
+                        enchanting_symbol = '    '
+
+                    if char.chartype == "Farmer":
+                        typesymbol = 'F' if char.isEnchanted else 'f'
+                    elif char.chartype == "Knight":
+                        typesymbol = 'K' if char.isEnchanted else 'k'
+                    else:
+                        typesymbol = 'R' if char.isEnchanted else 'r'
+
+                    symbol = typesymbol + enchanting_symbol
+                    grid[char.location[0],char.location[1]] = symbol
+        
+            print(' ','   '.join([f"{ii:2d}" for ii in range(self.gridwidth)]))
+            for ii in range(self.gridheight):
+                print(f"{ii:2d}",''.join(grid[ii,:]))
+            print("\n")
+        elif observer == "sb3":
+            raise NotImplementedError("Yet to implement the sb3 observation method")
+        else:
+            raise ValueError("observer must be in ['Human','Gamesmaster','SB3']")
+        
 
     def step(self,action):
         """
@@ -345,3 +371,9 @@ class ActivationGameWorld:
             initiator.step(target_char,self)
         else:
             initiator.step("Sense",self)
+
+    def is_solved(self):
+        """
+        Method that checks whether all Kings have been enchanted
+        """
+        return(all([char.isEnchanted for char in self.characters if char.chartype=="King"]))
