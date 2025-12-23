@@ -9,6 +9,13 @@ d.leslie@lancaster.ac.uk
 
 import numpy as np
 import random
+import gymnasium as gym
+
+import torch as th
+import torch.nn as nn
+
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+
 
 class ActivationGameCharacter:
     """
@@ -182,7 +189,9 @@ class ActivationGameWorld:
 #            print("Resampling world - previous world was not solvable")
             ntries += 1
             self.sample_world(composition)
-        if ntries > 0:
+        if ntries == 100:
+            raise RuntimeError("Could not sample a solvable world after 100 tries")
+        elif ntries > 0:
             print(f"Sampled {ntries} worlds before finding a solvable world")
 
 
@@ -251,43 +260,19 @@ class ActivationGameWorld:
         but this is an interesting proposition - could we pass off the enchantment to someone else?
         """
 
-        sense_actions = [[char.location,"Sense"] for char in self.characters if char.isEnchanted]
+        sense_actions = [[char.location,"Sense"] for char in self.characters if char.isEnchanted and char.chartype != "King"]
         # This is horribly loopy...
         enchant_actions = []
         for char in self.characters:
             if char.isEnchanted:
                 for target in char.couldEnchant:
-                    enchant_actions.append([char.location,target.location])
+                    if not target.isEnchanted:
+                        enchant_actions.append([char.location,target.location])
         
         actions = sense_actions + enchant_actions
 
         return actions
             
-    def get_action_mask(self):
-        """
-        Docstring for get_action_mask
-        
-        Returns the action mask for the current world state
-        This is a np.array vector of length gridheight*gridsize+(gridheight*gridsize)**2
-        The first gridheight*gridsize actions are the sense actions.
-        The remainder are the enchant actions, ordered lexicographically
-        by (initiator location, target location) where location is location[0]*gridwidth + location[1]
-        """
-
-        valid_actions = self.get_actions()
-
-        action_mask = np.zeros(self.gridheight*self.gridwidth + (self.gridheight*self.gridwidth)**2,dtype=np.bool)
-
-        for (initiator,target) in valid_actions:
-            initiator_index = initiator[0]*self.gridwidth + initiator[1]
-            if target=="Sense":
-                action_mask[initiator_index] = True
-            else:
-                target_index = target[0]*self.gridwidth + target[1]
-                enchant_action_index = (initiator_index+1)*(self.gridheight*self.gridwidth) + target_index
-                action_mask[enchant_action_index] = True
-
-        return action_mask
     
     def render(self,observer="Human"):
         """
@@ -378,3 +363,192 @@ class ActivationGameWorld:
         Method that checks whether all Kings have been enchanted
         """
         return(all([char.isEnchanted for char in self.characters if char.chartype=="King"]))
+    
+class ActivationGameEnv(gym.Env):
+    """
+    Gymnasium environment for the Activation Game
+    """
+    def __init__(self,gridsize=20,composition=[10,10,4],seed=None):
+        super().__init__()
+
+        self.world = ActivationGameWorld(gridsize=gridsize,composition=composition,seed=seed)
+
+        self.action_space = gym.spaces.Discrete(gridsize**2+gridsize**4)
+
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(4,gridsize,gridsize), dtype=np.uint8)
+
+        self.gridsize = gridsize
+        self.composition = composition
+
+        ### Some parameters for reward shaping
+        self.completion_reward = 1.0
+        self.obs_reward = 0.2/(self.gridsize**2)
+        self.king_activation_reward = 0.2/self.composition[-1]
+        self.nonking_activation_reward = 0.1/(sum(self.composition[:-1]))
+    
+    def reset(self,seed=None):
+        self.world = ActivationGameWorld(gridsize=self.gridsize,composition=self.composition,seed=seed)
+        return self.__gen_obs(), {}
+    
+    def step(self,action):
+
+        # Actions are encoded as integers
+        # Let num_cells be the number of cells in the grid
+        # The first num_cells integers direct the character at divmod(num_cells,self.gridwidth) to sense
+        # The next num_cells**2 integers direct the character at 
+        #  divmod((action-num_cells) // num_cells,self.gridwidth)
+        # to enchant the character at 
+        #  devmod((action-num_cells) %% num_cells,self.gridwitdh)
+        # We will then use some significant action masking
+
+        # Count number of cells observed and kings enchanted before taking the step
+        pre_observed = self.world.obs_mask.sum()
+        pre_kings = sum([char.isEnchanted for char in self.world.characters if char.chartype=="King"])
+        pre_nonkings = sum([char.isEnchanted for char in self.world.characters if char.chartype!="King"])
+
+
+        num_cells = self.world.gridwidth*self.world.gridheight
+        if action < num_cells:
+            initiator = list(divmod(action,self.world.gridwidth))
+            world_action = [initiator,"Sense"]
+        else:
+            action -= num_cells
+            initiator, target = divmod(action,num_cells)
+            initiator = list(divmod(initiator,self.world.gridwidth))
+            target = list(divmod(target,self.world.gridwidth))
+            world_action = [initiator,target]
+
+        # Take the action
+        self.world.step(world_action)
+
+        obs = self.__gen_obs()
+
+        terminated = self.world.is_solved()
+    
+        reward = self.completion_reward * terminated
+        reward += self.obs_reward * (self.world.obs_mask.sum()-pre_observed)
+        reward += self.king_activation_reward * (
+                sum([char.isEnchanted for char in self.world.characters if char.chartype=="King"])
+                - pre_kings
+        )
+        reward += self.nonking_activation_reward * (
+                sum([char.isEnchanted for char in self.world.characters if char.chartype!="King"])
+                - pre_nonkings
+        )
+
+        truncated = False
+        info = {}
+
+        return obs, reward, terminated, truncated, info
+    
+    def render(self):
+        self.world.render(observer="Human")
+    
+ 
+    def close(self):
+        pass  
+
+    def action_masks(self) -> list[bool]:
+        """
+        Docstring for get_action_mask
+        
+        Returns the action mask for the current world state
+        This is a np.array vector of length gridheight*gridsize+(gridheight*gridsize)**2
+        The first gridheight*gridsize actions are the sense actions.
+        The remainder are the enchant actions, ordered lexicographically
+        by (initiator location, target location) where location is location[0]*gridwidth + location[1]
+        """
+
+        valid_actions = self.world.get_actions()
+
+        num_cells = self.world.gridheight*self.world.gridwidth
+
+        action_mask = [False]*(num_cells + num_cells**2)
+
+        for (initiator,target) in valid_actions:
+            initiator_index = initiator[0]*self.world.gridwidth + initiator[1]
+            if target=="Sense":
+                action_mask[initiator_index] = True
+            else:
+                target_index = target[0]*self.world.gridwidth + target[1]
+                enchant_action_index = (initiator_index+1)*num_cells + target_index
+                action_mask[enchant_action_index] = True
+
+        return action_mask
+
+    def __gen_obs(self):
+        """
+        The machine learning ready observation of the world
+        We present observations as a multichannel 'image'
+        Channel 0 reports the observation mask
+        Channel 1 reports the observed characters, including whether they are enchanted
+            (1 is farmer, 2 is knight, 3 is king, add 16 if they are enchanted)
+        Channel 2 and 3 report the location of the characters that are enchanted
+        """
+
+        # Obs mask into channel 0
+        channel0 = self.world.obs_mask.astype(np.uint8)
+
+        # Observed characters into channel 1
+        channel1 = np.zeros((self.world.gridheight,self.world.gridwidth), dtype=np.uint8)
+        for char in self.world.characters:
+            if char.isObserved:
+                loc = char.location
+                if char.chartype == "Farmer":
+                    base = 1
+                elif char.chartype == "Knight":
+                    base = 2
+                else:
+                    base = 3
+                if char.isEnchanted:
+                    base += 16
+                channel1[loc[0],loc[1]] = base
+        
+        # Locations of enchanted characters into channels 2 and 3
+        # Initialise to -1 (mod size of np.uint8) so that unenchanting is different from enchanting [0,0]
+        channel2 = np.zeros((self.world.gridheight,self.world.gridwidth), dtype=np.uint8) - 1
+        channel3 = np.zeros((self.world.gridheight,self.world.gridwidth), dtype=np.uint8) - 1
+        for char in self.world.characters:
+            if char.isEnchanting is not None:
+                enchantress = char.location
+                enchanted = char.isEnchanting.location
+                channel2[enchantress[0],enchantress[1]] = enchanted[0]
+                channel3[enchantress[0],enchantress[1]] = enchanted[1]
+
+        return np.stack([channel0,channel1,channel2,channel3], axis=0)
+    
+
+
+
+class ActivationGameCNN(BaseFeaturesExtractor):
+    """
+    :param observation_space: (gym.Space)
+    :param features_dim: (int) Number of features extracted.
+        This corresponds to the number of unit for the last layer.
+    """
+
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
+        super().__init__(observation_space, features_dim)
+        # We assume CxHxW images (channels first)
+        # Re-ordering will be done by pre-preprocessing or wrapper
+        n_input_channels = observation_space.shape[0]
+        self.cnn = nn.Sequential(
+            nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=7),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=3),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+
+        # Compute shape by doing one forward pass
+        with th.no_grad():
+            n_flatten = self.cnn(
+                th.as_tensor(observation_space.sample()[None]).float()
+            ).shape[1]
+
+        self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
+
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        return self.linear(self.cnn(observations))
