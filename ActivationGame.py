@@ -145,7 +145,7 @@ class ActivationGameCharacter:
         elif isinstance(action,ActivationGameCharacter):
             # if the action is a suitable character in the game, enchant that character
             if action not in self.couldEnchant:
-                raise ValueError("Enchantment target at {action.location} is not enchantable right now")
+                raise ValueError(f"Enchantment target at {action.location} is not enchantable right now")
             action.enchant()
             self.isEnchanting = action
         else:
@@ -373,13 +373,15 @@ class ActivationGameEnv(gym.Env):
 
         self.world = ActivationGameWorld(gridsize=gridsize,composition=composition,seed=seed)
 
-        self.action_space = gym.spaces.Discrete(gridsize**2+gridsize**4)
+        self.gridsize = gridsize
+        self.composition = composition
+        self.max_obs_range = max([char.range for char in self.world.characters])
+
+        self.action_space = gym.spaces.Discrete(gridsize**2 * (2*self.max_obs_range+1)**2)
 
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(4,gridsize,gridsize), dtype=np.uint8)
 
-        self.gridsize = gridsize
-        self.composition = composition
-
+ 
         ### Some parameters for reward shaping
         self.completion_reward = 1.0
         self.obs_reward = 0.2/(self.gridsize**2)
@@ -391,15 +393,22 @@ class ActivationGameEnv(gym.Env):
         return self.__gen_obs(), {}
     
     def step(self,action):
+        """
+        Actions are encoded as integers
 
-        # Actions are encoded as integers
-        # Let num_cells be the number of cells in the grid
-        # The first num_cells integers direct the character at divmod(num_cells,self.gridwidth) to sense
-        # The next num_cells**2 integers direct the character at 
-        #  divmod((action-num_cells) // num_cells,self.gridwidth)
-        # to enchant the character at 
-        #  devmod((action-num_cells) %% num_cells,self.gridwitdh)
-        # We will then use some significant action masking
+        Let num_cells be the number of cells in the grid 
+        and num_action_cells be the maximal number of cells an agent can act upon
+
+        The integer // num_action_cells is the actioning character's location (encoded as an integer)
+        And integer % num_action_cells is the relative target location (encoded as an integer)
+
+        Character location integers are loc[0]*gridwidth + loc[1]
+        Relative target location integers are (rel_loc[0]*(2*max_obs_range+1) + rel_loc[1])+max_obs_range
+
+        If relative target location == initiator location, then the action is "Sense"
+        Otherwise the action is to enchant the character at the relative target location
+        """
+        # 
 
         # Count number of cells observed and kings enchanted before taking the step
         pre_observed = self.world.obs_mask.sum()
@@ -407,15 +416,14 @@ class ActivationGameEnv(gym.Env):
         pre_nonkings = sum([char.isEnchanted for char in self.world.characters if char.chartype!="King"])
 
 
-        num_cells = self.world.gridwidth*self.world.gridheight
-        if action < num_cells:
-            initiator = list(divmod(action,self.world.gridwidth))
+        num_grid_cells = self.world.gridwidth*self.world.gridheight
+        num_action_cells = (2*self.max_obs_range+1)**2
+        initiator, rel_target = divmod(action,num_action_cells)
+        initiator = list(divmod(initiator,self.world.gridwidth))
+        target = (np.array(initiator)+np.array(divmod(rel_target,2*self.max_obs_range+1))-self.max_obs_range).tolist()
+        if target==initiator:
             world_action = [initiator,"Sense"]
         else:
-            action -= num_cells
-            initiator, target = divmod(action,num_cells)
-            initiator = list(divmod(initiator,self.world.gridwidth))
-            target = list(divmod(target,self.world.gridwidth))
             world_action = [initiator,target]
 
         # Take the action
@@ -450,29 +458,35 @@ class ActivationGameEnv(gym.Env):
 
     def action_masks(self) -> list[bool]:
         """
-        Docstring for get_action_mask
-        
-        Returns the action mask for the current world state
-        This is a np.array vector of length gridheight*gridsize+(gridheight*gridsize)**2
-        The first gridheight*gridsize actions are the sense actions.
-        The remainder are the enchant actions, ordered lexicographically
-        by (initiator location, target location) where location is location[0]*gridwidth + location[1]
-        """
+        Actions are encoded as integers
 
+        Let num_cells be the number of cells in the grid 
+        and num_action_cells be the maximal number of cells an agent can act upon
+
+        The integer // num_action_cells is the actioning character's location (encoded as an integer)
+        And integer % num_action_cells is the relative target location (encoded as an integer)
+
+        Character location integers are loc[0]*gridwidth + loc[1]
+        Relative target location integers are (rel_loc[0]*(2*max_obs_range+1) + rel_loc[1])+max_obs_range
+
+        If relative target location == initiator location, then the action is "Sense"
+        Otherwise the action is to enchant the character at the relative target location
+        """
         valid_actions = self.world.get_actions()
 
-        num_cells = self.world.gridheight*self.world.gridwidth
+        num_grid_cells = self.world.gridheight*self.world.gridwidth
+        num_obs_cells = (2*self.max_obs_range+1)**2
 
-        action_mask = [False]*(num_cells + num_cells**2)
+        action_mask = [False]*(num_grid_cells*num_obs_cells)
 
         for (initiator,target) in valid_actions:
-            initiator_index = initiator[0]*self.world.gridwidth + initiator[1]
             if target=="Sense":
-                action_mask[initiator_index] = True
-            else:
-                target_index = target[0]*self.world.gridwidth + target[1]
-                enchant_action_index = (initiator_index+1)*num_cells + target_index
-                action_mask[enchant_action_index] = True
+                target = initiator
+            shifted_rel_pos = (np.array(target)-np.array(initiator)+ self.max_obs_range).tolist()
+            initiator_index = initiator[0]*self.world.gridwidth + initiator[1]
+            target_index = shifted_rel_pos[0]*(2*self.max_obs_range+1) + shifted_rel_pos[1]
+            action_index = initiator_index*num_obs_cells + target_index
+            action_mask[action_index] = True
 
         return action_mask
 
