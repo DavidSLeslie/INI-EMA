@@ -86,9 +86,12 @@ class ActivationGameCharacter:
         """
         Method to take actions when the character is observed
         """
-        for char in world.characters:
-            if char.inRange(self.location) and char != self:
-                char.couldEnchant.add(self)
+        if self.chartype != "King":
+            # Kings do not get enchanted now, only observed.
+            # May want to reverse this change at some point.
+            for char in world.characters:
+                if char.inRange(self.location) and char != self:
+                    char.couldEnchant.add(self)
         self.isObserved = True
         
     
@@ -360,9 +363,13 @@ class ActivationGameWorld:
 
     def is_solved(self):
         """
-        Method that checks whether all Kings have been enchanted
+        Method that checks whether all Kings have been observed
+        (The criterion used to be all Kings were enchanted, but we
+        realised that it never makes sense not to instantly enchant an observed King.
+        It may be that some possibility of spontaneous disenchantment would make it
+        more interesting / complex and introduce a value of actively deciding when to enchant.)
         """
-        return(all([char.isEnchanted for char in self.characters if char.chartype=="King"]))
+        return(all([char.isObserved for char in self.characters if char.chartype=="King"]))
     
 class ActivationGameEnv(gym.Env):
     """
