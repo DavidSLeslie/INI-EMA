@@ -15,9 +15,9 @@
 
 ### Classes defined
 - ```ActivationGameCharacter```. You should never need to touch this yourself, other than to fix my bugs or otherwise improve things.
-- ```ActivationGameWorld```, which largely consists of a set of ```ActivationGameCharacter```s, and what has been observed on the grid. This is the object to play with.
-- ```ActivationGameEnv```, which is a [Gymnasium](https://gymnasium.farama.org/index.html) wrapper of ```ActivationGameWorld```
-- ```ActivationGameCNN```, which is a first and likely very poor attempt at a feature extractor for [StableBaselines3](https://stable-baselines3.readthedocs.io/en/master/) algorithms learning on ```ActivationGameEnv```
+- ```ActivationGameWorld```, which largely consists of a set of ```ActivationGameCharacter```s, and what has been observed on the grid. This is the object to play with. This class will only change if absolutely necessary.
+- ```ActivationGameEnv```, which is a [Gymnasium](https://gymnasium.farama.org/index.html) wrapper of ```ActivationGameWorld```. This class may well evolve but I will try to maintain backward copatibility.
+- ```ActivationGameCNN```, which is a first and likely very poor attempt at a feature extractor for [StableBaselines3](https://stable-baselines3.readthedocs.io/en/master/) algorithms learning on ```ActivationGameEnv```. Anything could happen to this class. Do not rely on it!
 
 ### How to experiment
 I found it useful to play with an instantiation of an ```ActivationGameWorld```. On initiation you may specify ```gridsize=g``` (a scalar - only square grids for now) and/or ```composition=[x,y,z]``` where x is the number of farmers, y the number of knights and z the number of kings.
