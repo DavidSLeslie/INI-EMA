@@ -15,9 +15,9 @@
 
 ### Classes defined
 - ```ActivationGameCharacter```. You should never need to touch this yourself, other than to fix my bugs or otherwise improve things.
-- ```ActivationGameWorld```, which largely consists of a set of ```ActivationGameCharacter```s, and what has been observed on the grid, and associated useful methods eg for taking actions and determining if the game is solved. This is the object to play with.
-- ```ActivationGameEnv```, which is a [Gymnasium](https://gymnasium.farama.org/index.html) wrapper of ```ActivationGameWorld```
-- ```ActivationGameCNN```, which is a first and likely very poor attempt at a feature extractor for [StableBaselines3](https://stable-baselines3.readthedocs.io/en/master/) algorithms learning on ```ActivationGameEnv```
+- ```ActivationGameWorld```, which largely consists of a set of ```ActivationGameCharacter```s, and what has been observed on the grid, and associated useful methods eg for taking actions and determining if the game is solved. This is the object to play with. Amendments to this class will be avoided if at all possible.
+- ```ActivationGameEnv```, which is a [Gymnasium](https://gymnasium.farama.org/index.html) wrapper of ```ActivationGameWorld```. This wrapper may well evolve but I will try to ensure backward compatibility.
+- ```ActivationGameCNN```, which is a first and likely very poor attempt at a feature extractor for [StableBaselines3](https://stable-baselines3.readthedocs.io/en/master/) algorithms learning on ```ActivationGameEnv```. Anything could happen to this. Indeed it probably shouldn't even be in the main file, since it's more a solution method than an environment to learn.
 
 ### How to experiment
 I found it useful to play with an instantiation of an ```ActivationGameWorld```. On initiation you may specify ```gridsize=g``` (a scalar - only square grids for now - with default value 20) and/or ```composition=[x,y,z]``` where x is the number of farmers, y the number of knights and z the number of kings (default is [10,10,4]). A random placement of characters occurs, and then a check is performed to ensure the environment is solvable (if it is not, we resample, until eithe we find a solvable world or a maximum number of resamples occurs).
