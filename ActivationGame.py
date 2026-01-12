@@ -232,7 +232,6 @@ class ActivationGameWorld:
         """
 
         to_expand = [self.characters[0]]
- #       print(self.characters[0].location)
         could_be_enchanted = set([self.characters[0]])
 
         # Recuresively extend the putative enchantment set
@@ -246,11 +245,8 @@ class ActivationGameWorld:
                     to_expand.append(char)
             
         # Now see if all kings are in the enchanted set
-        for char in self.characters:
-            if char.chartype == "King":
-                if char not in could_be_enchanted:
-                    return False
-        return True
+        solvable = all([char in could_be_enchanted for char in self.characters if char.chartype=="King"])
+        return solvable
 
 
     def get_actions(self):
@@ -264,13 +260,7 @@ class ActivationGameWorld:
         """
 
         sense_actions = [[char.location,"Sense"] for char in self.characters if char.isEnchanted and char.chartype != "King"]
-        # This is horribly loopy...
-        enchant_actions = []
-        for char in self.characters:
-            if char.isEnchanted:
-                for target in char.couldEnchant:
-                    if not target.isEnchanted:
-                        enchant_actions.append([char.location,target.location])
+        enchant_actions = [[enchanter.location,target.location] for enchanter in self.characters if enchanter.isEnchanted for target in enchanter.couldEnchant if not target.isEnchanted]
         
         actions = sense_actions + enchant_actions
 
@@ -340,22 +330,16 @@ class ActivationGameWorld:
             raise ValueError(f"action is {action} but must be a list/tuple of form [initiator_location,target]")
 
         # Find the initiating character
-        initiator = None
-        for char in self.characters:
-            if char.location == initiator_loc:
-                initiator = char
-                break
-        if initiator is None:
+        try:
+            initiator = [char for char in self.characters if char.location == initiator_loc][0]
+        except:
             raise ValueError(f"No character found at location {initiator_loc}")
 
         # Find the target character if needed
         if target != "Sense":
-            target_char = None
-            for char in self.characters:
-                if char.location == target:
-                    target_char = char
-                    break
-            if target_char is None:
+            try:
+                target_char = [char for char in self.characters if char.location == target][0]
+            except:
                 raise ValueError(f"No character found at target location {target}")
             initiator.step(target_char,self)
         else:
