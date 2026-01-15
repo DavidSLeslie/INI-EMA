@@ -1,6 +1,7 @@
 from ActivationGame import ActivationGameWorld
 import numpy as np
 from OracleStrategy import oracle_score
+import networkx as nx
 
 
 def DepthFirst(world: ActivationGameWorld, render=False):
@@ -72,15 +73,90 @@ def count_num_to_observe(char, world):
     return count
 
 
-def linear_features_strategy(world: ActivationGameWorld,weights=[1,1,1]):
+def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-1],render=False,max_steps=1000):
     """
     Linear features based strategy
     The features are:
-    - number of newly observed cells
-    - number of unobserved cells that could now be observed on next step
-    - length of chain that is discareded by taking the action
+    - number of newly observed cells that could be sensed from the character's location
+    - length of chain that is discarded by taking the action
+    - the number of actions required to enchant the character
+    The weights are given by the weights parameter
     """
-    pass
+    stack = [char for char in world.characters if char.isEnchanted]
+    if len(stack) > 1:
+        print("Warning: multiple enchanted characters at start of linear features strategy")
+    
+    while not world.is_solved() and world.nsteps < max_steps:
+        action_matrix = []
+        for char in stack:
+            f1 = count_num_to_observe(char,world)
+            paths = find_paths_to_enchant(char,world)
+            action_matrix.extend([[f1,path[0],path[1],path[2]] for path in paths])
+        feature_matrix = np.array([a[:-1] for a in action_matrix])
+        scores = feature_matrix @ np.array(weights)
+        max_index = np.argmax(scores)
+        best_path = action_matrix[max_index][-1]
+        print(f"action matrix: {action_matrix}")
+        print(f"Chosen action path: {best_path}")
+ 
+        # Register who is currently observed so we can easily find the newly observed chars
+        currently_observed = [c for c in world.characters if c.isObserved]
+        # Do the actions in the best_path
+        for action in best_path:
+            world.step(action)
+        char = [c for c in world.characters if c.location == best_path[-1][0]][0]
+        if render:
+            print(f"Step {world.nsteps}: Activated {char.chartype} at {char.location}, then sensed")
+            world.render()
+        # Work out who is newly observed
+        now_observed = [c for c in world.characters if c.isObserved]
+        newly_observed = [c for c in now_observed if c not in currently_observed]
+        # Add the newly observed characters to the stack
+        stack.extend(newly_observed)
+        # Remove from the stack any characters that have outlived their usefulness
+        stack = [char for char in stack if count_num_to_observe(char,world)>0]
+    
+    if world.nsteps >= max_steps:
+        print("Warning: maximum number of steps reached before solving the world")
+    return world.nsteps
+
+
+
+def find_paths_to_enchant(target_char,world):
+    """
+    Find all paths to enchant the target character from currently enchanted characters
+    Returns a list of Path objects
+    """
+    # Build an nx graph of currently observed characters
+    G = nx.DiGraph()
+    observed_chars = [char for char in world.characters if char.isObserved]
+    node2char = {ii:char for ii,char in enumerate(observed_chars)}
+    nodes = node2char.keys()
+    target_node = [ii for ii,char in enumerate(observed_chars) if char==target_char][0]
+    edges = [(ii,jj) for ii in nodes for jj in nodes if ii!=jj and node2char[ii].inRange(node2char[jj].location)]
+    G.add_nodes_from(nodes)
+    G.add_edges_from(edges)
+
+    # Find the current enchantment path
+    enchantment_path = [ii for ii in nodes if node2char[ii] == world.characters[0]]
+    while node2char[enchantment_path[-1]].isEnchanting is not None:
+        enchantment_path.extend([ii for ii in nodes if node2char[ii] == node2char[enchantment_path[-1]].isEnchanting])
+    
+    # Work backward from the end of the path, finding paths to the target node
+    paths = []
+    redux = 0
+    while len(enchantment_path) > 0:
+        start_node = enchantment_path.pop()
+        if nx.has_path(G, start_node, target_node):
+            path_nodes = nx.shortest_path(G, start_node, target_node)
+            # If this shortest path does not revisit any nodes in the enchantment path (except start)
+            if not any([node in enchantment_path for node in path_nodes[1:]]):
+                actions = [[node2char[path_nodes[i]].location, node2char[path_nodes[i+1]].location] for i in range(len(path_nodes)-1)]
+                actions.append([node2char[target_node].location, "Sense"])
+                extension = len(actions)
+                paths.append([redux,extension,actions])
+        redux += 1
+    return paths
 
 
 def eval_strategy(strategy=DepthFirst, nsamples=10):
@@ -94,12 +170,13 @@ def eval_strategy(strategy=DepthFirst, nsamples=10):
         world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
         nsteps[ii] = strategy(world)
         world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
-        oracle[ii] = oracle_score(world)
+        _, oracle_score_val = oracle_score(world)
+        oracle[ii] = oracle_score_val
     return(nsteps,oracle)  
 
 if __name__ == "__main__":
     world = ActivationGameWorld()
-    nsteps = DepthFirst(world,render=True)
+    nsteps = linear_features_strategy(world,render=True)
     #world.render()
     print(f"Solved in {nsteps} steps")
 
