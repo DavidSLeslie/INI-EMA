@@ -237,7 +237,7 @@ class ActivationGameWorld:
         to_expand = [self.characters[0]]
         could_be_enchanted = set([self.characters[0]])
 
-        # Recuresively extend the putative enchantment set
+        # Recursively extend the putative enchantment set
         while len(to_expand) > 0:
             current = to_expand.pop()
             could_be_enchanted.add(current)
@@ -245,7 +245,10 @@ class ActivationGameWorld:
             # if they have not already been expanded from
             for char in self.characters:
                 if current.inRange(char.location) and char not in could_be_enchanted:
-                    to_expand.append(char)
+                    if char.chartype != "King":
+                        to_expand.append(char)
+                    else:
+                        could_be_enchanted.add(char)
             
         # Now see if all kings are in the enchanted set
         solvable = all([char in could_be_enchanted for char in self.characters if char.chartype=="King"])
