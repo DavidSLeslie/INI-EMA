@@ -49,6 +49,8 @@ def DepthFirst(world: ActivationGameWorld):
         if len(newly_observed)>0:
             stack[level + 1] = newly_observed
 
+    return world.nsteps
+
  
 
 
@@ -65,9 +67,22 @@ def count_num_to_observe(char, world):
     
     return count
 
+def eval_strategy(strategy=DepthFirst, nsamples=10):
+    """
+    Evaluate a strategy over multiple samples of the world
+    """
+    nsteps = np.zeros(nsamples)
+    initial_seed = np.random.randint(0,10000)
+    for ii in range(nsamples):
+        world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
+        nsteps[ii] = strategy(world)
+    return(nsteps)
 
 if __name__ == "__main__":
-    world = ActivationGameWorld()
-    DepthFirst(world)
-    world.render()
-    print(f"Solved in {world.nsteps} steps")
+    #world = ActivationGameWorld()
+    #nsteps = DepthFirst(world)
+    #world.render()
+    #print(f"Solved in {nsteps} steps")
+    nsteps = eval_strategy()
+    print(f"Average number of steps over samples: {np.mean(nsteps)}")
+    print(f"Maximum number of steps over samples: {np.max(nsteps)}")

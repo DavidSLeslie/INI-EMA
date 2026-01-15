@@ -159,7 +159,7 @@ class ActivationGameWorld:
     """
     A game world for the activation game
     """
-    def __init__(self,gridsize = 20, composition=[10,10,4], seed = None):
+    def __init__(self,gridsize = 20, composition=[10,10,4], seed = None, silent=False):
         """
         Docstring for __init__
         
@@ -194,7 +194,7 @@ class ActivationGameWorld:
             self.sample_world(composition)
         if ntries == 100:
             raise RuntimeError("Could not sample a solvable world after 100 tries")
-        elif ntries > 0:
+        elif ntries > 0 and silent==False:
             print(f"Sampled {ntries} worlds before finding a solvable world")
 
 
