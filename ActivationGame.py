@@ -175,10 +175,10 @@ class ActivationGameWorld:
             raise ValueError(f"gridsize ({gridsize}) miust be a positive integer")
 
         try:
-            nfarmers, nknights, nkings = composition
+            nfarmers, nknights, self.nkings = composition
         except:
             raise ValueError("composition must be a list/tuple of form [nfarmers,nknights,nkings]")
-        if not isinstance(nfarmers,int) or not isinstance(nknights,int) or not isinstance(nkings,int):
+        if not isinstance(nfarmers,int) or not isinstance(nknights,int) or not isinstance(self.nkings,int):
             raise ValueError("The entries in composition must be integers")
         
         # Set the seed if it has been passed

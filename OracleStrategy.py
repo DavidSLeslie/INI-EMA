@@ -41,32 +41,32 @@ def oracle_score(world):
     G, nodes = build_graph(world)
 
     subgraphs = [
-        shortest_subgraph(G, nodes[0], nodes[-k]) for k in range(1, world.n_kings + 1)
+        shortest_subgraph(G, nodes[0], nodes[-k]) for k in range(1, world.nkings + 1)
     ]
 
     G_union = nx.compose_all(subgraphs)
 
-    n_nodes = len(G_union.nodes()) - (world.n_kings + 1)
+    n_nodes = len(G_union.nodes()) - (world.nkings + 1)
 
     return 1 + n_nodes * 2
 
 
 # -------------------------------
+if __name__ == "__main__":
+    runs = 10000
+    score = np.zeros(runs)
 
-runs = 10000
-score = np.zeros(runs)
+    for r in range(runs):
 
-for r in range(runs):
+        seed = random.randrange(2**32)
+        random.seed(seed)
 
-    seed = random.randrange(2**32)
-    random.seed(seed)
+        world = ActivationGameWorld()
 
-    world = ActivationGameWorld()
+        baseline = oracle_score(world)
 
-    baseline = evaluate_world(world)
-
-    score[r] = baseline
+        score[r] = baseline
 
 
-mean = np.mean(score[score != 0])
-print(mean)
+    mean = np.mean(score[score != 0])
+    print(mean)

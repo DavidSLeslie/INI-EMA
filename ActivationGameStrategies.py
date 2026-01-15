@@ -1,5 +1,7 @@
 from ActivationGame import ActivationGameWorld
 import numpy as np
+from OracleStrategy import oracle_score
+
 
 def DepthFirst(world: ActivationGameWorld):
     """
@@ -72,17 +74,22 @@ def eval_strategy(strategy=DepthFirst, nsamples=10):
     Evaluate a strategy over multiple samples of the world
     """
     nsteps = np.zeros(nsamples)
+    oracle = np.zeros(nsamples)
     initial_seed = np.random.randint(0,10000)
     for ii in range(nsamples):
         world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
         nsteps[ii] = strategy(world)
-    return(nsteps)
+        world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
+        oracle[ii] = oracle_score(world)
+    return(nsteps,oracle)  
 
 if __name__ == "__main__":
     #world = ActivationGameWorld()
     #nsteps = DepthFirst(world)
     #world.render()
     #print(f"Solved in {nsteps} steps")
-    nsteps = eval_strategy()
+    nsteps, oracle = eval_strategy()
     print(f"Average number of steps over samples: {np.mean(nsteps)}")
     print(f"Maximum number of steps over samples: {np.max(nsteps)}")
+    print(f"Average oracle score over samples: {np.mean(oracle)}")
+    print(f"Average difference between strategy and oracle: {np.mean(nsteps - oracle)}")
