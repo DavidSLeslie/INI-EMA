@@ -205,6 +205,9 @@ class ActivationGameWorld:
         self.characters[0].enchant()
         self.characters[0].observe(self)
 
+        # Initiate the step counter to 0
+        self.nsteps = 0
+
     def sample_world(self,composition):
         """
         Method to sample a new world configuration
@@ -344,6 +347,10 @@ class ActivationGameWorld:
             initiator.step(target_char,self)
         else:
             initiator.step("Sense",self)
+
+        # Increment the step counter
+        self.nsteps += 1
+
 
     def is_solved(self):
         """
