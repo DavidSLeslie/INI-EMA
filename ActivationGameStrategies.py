@@ -73,7 +73,7 @@ def count_num_to_observe(char, world):
     return count
 
 
-def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-1],render=False,max_steps=1000):
+def linear_features_strategy(world: ActivationGameWorld,weights=[1,-5,-10],render=False,max_steps=1000):
     """
     Linear features based strategy
     The features are:
@@ -96,8 +96,7 @@ def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-1],render
         scores = feature_matrix @ np.array(weights)
         max_index = np.argmax(scores)
         best_path = action_matrix[max_index][-1]
-        print(f"action matrix: {action_matrix}")
-        print(f"Chosen action path: {best_path}")
+        
  
         # Register who is currently observed so we can easily find the newly observed chars
         currently_observed = [c for c in world.characters if c.isObserved]
@@ -106,7 +105,7 @@ def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-1],render
             world.step(action)
         char = [c for c in world.characters if c.location == best_path[-1][0]][0]
         if render:
-            print(f"Step {world.nsteps}: Activated {char.chartype} at {char.location}, then sensed")
+            print(f"Chosen action path: {best_path}")
             world.render()
         # Work out who is newly observed
         now_observed = [c for c in world.characters if c.isObserved]
@@ -158,21 +157,29 @@ def find_paths_to_enchant(target_char,world):
         redux += 1
     return paths
 
+def oracle_strategy(world: ActivationGameWorld, render=False):
+    """
+    Oracle strategy for the Activation Game
+    """
+    _, oracle_steps = oracle_score(world)
+    return oracle_steps
 
-def eval_strategy(strategy=DepthFirst, nsamples=10):
+
+def eval_strategy(strategies=[DepthFirst,oracle_strategy], nsamples=10):
     """
     Evaluate a strategy over multiple samples of the world
     """
-    nsteps = np.zeros(nsamples)
-    oracle = np.zeros(nsamples)
+    nsteps = np.zeros((nsamples,len(strategies)))
     initial_seed = np.random.randint(0,10000)
     for ii in range(nsamples):
-        world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
-        nsteps[ii] = strategy(world)
-        world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
-        _, oracle_score_val = oracle_score(world)
-        oracle[ii] = oracle_score_val
-    return(nsteps,oracle)  
+        try:
+            world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
+        except:
+            continue
+        for si,strategy in enumerate(strategies):
+            nsteps[ii,si] = strategy(world)
+            world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
+    return nsteps 
 
 if __name__ == "__main__":
     world = ActivationGameWorld()
