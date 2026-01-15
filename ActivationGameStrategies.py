@@ -4,7 +4,7 @@ from OracleStrategy import oracle_score
 import networkx as nx
 
 
-def DepthFirst(world: ActivationGameWorld, render=False):
+def DepthFirst(world: ActivationGameWorld, render=False, **kwargs):
     """
     A depth-first search strategy for the Activation Game.
     """
@@ -72,8 +72,55 @@ def count_num_to_observe(char, world):
     
     return count
 
+def nonmyopic_num_to_observe(char, world, discount_factor=1.0):
+    """
+    Count the number of new cells that could be observed by the character
+    using a non-myopic strategy up to a given depth with discounting
+    """
+    loc = char.location
+    obs_range = char.range
 
-def linear_features_strategy(world: ActivationGameWorld,weights=[1,-5,-10],render=False,max_steps=1000):
+    observees = [[x,y] for x in range(max(0, loc[0] - obs_range), min(world.gridwidth - 1, loc[0] + obs_range) + 1)
+                        for y in range(max(0, loc[1] - obs_range), min(world.gridheight - 1, loc[1] + obs_range) + 1)
+                        if world.obs_mask[x][y] == 0]
+    #observees = [[x,y] for x in range(world.gridwidth) for y in range(world.gridheight) 
+     #             if world.obs_mask[x][y] == 0 and abs(x - loc[0])<=obs_range and abs(y - loc[1]) <= obs_range]
+    
+    discount = 1.0
+    num_observees = len(observees)
+    num_new_observees = num_observees
+    score = discount*num_observees
+
+    # Now fix obs_range to be the longest range in the game - this is somewhat arbitrary
+    obs_range = max([c.range for c in world.characters])
+
+    while num_new_observees > 0:
+         # Add all cells observable from those discovered the previous step
+        new_observees = []
+        for loc in observees:
+            new_observees.extend(
+ #               [[x,y] for x in range(world.gridwidth) for y in range(world.gridheight) 
+ #                   if [x,y] not in observees and [x,y] not in new_observees and world.obs_mask[x][y] == 0 
+ #                   and abs(x - loc[0])<=obs_range and abs(y - loc[1]) <= obs_range]
+                [[x,y] for x in range(max(0, loc[0] - obs_range), min(world.gridwidth - 1, loc[0] + obs_range) + 1)
+                        for y in range(max(0, loc[1] - obs_range), min(world.gridheight - 1, loc[1] + obs_range) + 1)
+                        if world.obs_mask[x][y] == 0
+                        and [x,y] not in observees and [x,y] not in new_observees]
+                )
+    
+        num_new_observees = len(new_observees)
+        discount *= discount_factor
+        score += discount*(num_new_observees)
+
+        if num_new_observees == 0:
+            more_to_observe = False
+        
+        observees.extend(new_observees)
+
+    return score
+        
+
+def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-5],myopic=True,render=False,max_steps=1000,**kwargs):
     """
     Linear features based strategy
     The features are:
@@ -82,6 +129,7 @@ def linear_features_strategy(world: ActivationGameWorld,weights=[1,-5,-10],rende
     - the number of actions required to enchant the character
     The weights are given by the weights parameter
     """
+
     stack = [char for char in world.characters if char.isEnchanted]
     if len(stack) > 1:
         print("Warning: multiple enchanted characters at start of linear features strategy")
@@ -89,7 +137,10 @@ def linear_features_strategy(world: ActivationGameWorld,weights=[1,-5,-10],rende
     while not world.is_solved() and world.nsteps < max_steps:
         action_matrix = []
         for char in stack:
-            f1 = count_num_to_observe(char,world)
+            if myopic:
+                f1 = count_num_to_observe(char,world)
+            else:
+                f1 = nonmyopic_num_to_observe(char,world,discount_factor=0.5)
             paths = find_paths_to_enchant(char,world)
             action_matrix.extend([[f1,path[0],path[1],path[2]] for path in paths])
         feature_matrix = np.array([a[:-1] for a in action_matrix])
@@ -157,7 +208,7 @@ def find_paths_to_enchant(target_char,world):
         redux += 1
     return paths
 
-def oracle_strategy(world: ActivationGameWorld, render=False):
+def oracle_strategy(world: ActivationGameWorld, render=False, **kwargs):
     """
     Oracle strategy for the Activation Game
     """
@@ -165,7 +216,7 @@ def oracle_strategy(world: ActivationGameWorld, render=False):
     return oracle_steps
 
 
-def eval_strategy(strategies=[DepthFirst,oracle_strategy], nsamples=10):
+def eval_strategy(strategies=[DepthFirst,oracle_strategy], nsamples=10, **kwargs):
     """
     Evaluate a strategy over multiple samples of the world
     """
@@ -177,13 +228,13 @@ def eval_strategy(strategies=[DepthFirst,oracle_strategy], nsamples=10):
         except:
             continue
         for si,strategy in enumerate(strategies):
-            nsteps[ii,si] = strategy(world)
+            nsteps[ii,si] = strategy(world,**kwargs)
             world = ActivationGameWorld(seed=initial_seed+ii,silent=True)
     return nsteps 
 
 if __name__ == "__main__":
     world = ActivationGameWorld()
-    nsteps = linear_features_strategy(world,render=True)
+    nsteps = linear_features_strategy(world,render=True,myopic=False)
     #world.render()
     print(f"Solved in {nsteps} steps")
 
