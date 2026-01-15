@@ -3,7 +3,7 @@ import numpy as np
 from OracleStrategy import oracle_score
 
 
-def DepthFirst(world: ActivationGameWorld):
+def DepthFirst(world: ActivationGameWorld, render=False):
     """
     A depth-first search strategy for the Activation Game.
     """
@@ -39,11 +39,15 @@ def DepthFirst(world: ActivationGameWorld):
             enchanters = [c for c in world.characters if char in c.couldEnchant and c.isEnchanted]
             # Activate the character using the first enchanter for now (I believe it's unimportant)
             world.step([enchanters[0].location, char.location])
+            if render:
+                print(f"Step {world.nsteps}: Activated {char.chartype} at {char.location} using enchanter at {enchanters[0].location}, then sensed")
 
         # Register who is currently observed so we can easily find the newly observed chars
         currently_observed = [c for c in world.characters if c.isObserved]
         # Do the sensing action
         world.step([char.location, "Sense"])
+        if render:
+            world.render()
         # Work out who is newly observed
         now_observed = [c for c in world.characters if c.isObserved]
         newly_observed = [c for c in now_observed if c not in currently_observed]
@@ -52,8 +56,6 @@ def DepthFirst(world: ActivationGameWorld):
             stack[level + 1] = newly_observed
 
     return world.nsteps
-
- 
 
 
 def count_num_to_observe(char, world):
@@ -68,6 +70,18 @@ def count_num_to_observe(char, world):
     count = sum([world.obs_mask[x][y] == 0 for x in range(min_x, max_x + 1) for y in range(min_y, max_y + 1)])
     
     return count
+
+
+def linear_features_strategy(world: ActivationGameWorld,weights=[1,1,1]):
+    """
+    Linear features based strategy
+    The features are:
+    - number of newly observed cells
+    - number of unobserved cells that could now be observed on next step
+    - length of chain that is discareded by taking the action
+    """
+    pass
+
 
 def eval_strategy(strategy=DepthFirst, nsamples=10):
     """
@@ -84,12 +98,13 @@ def eval_strategy(strategy=DepthFirst, nsamples=10):
     return(nsteps,oracle)  
 
 if __name__ == "__main__":
-    #world = ActivationGameWorld()
-    #nsteps = DepthFirst(world)
+    world = ActivationGameWorld()
+    nsteps = DepthFirst(world,render=True)
     #world.render()
-    #print(f"Solved in {nsteps} steps")
-    nsteps, oracle = eval_strategy()
-    print(f"Average number of steps over samples: {np.mean(nsteps)}")
-    print(f"Maximum number of steps over samples: {np.max(nsteps)}")
-    print(f"Average oracle score over samples: {np.mean(oracle)}")
-    print(f"Average difference between strategy and oracle: {np.mean(nsteps - oracle)}")
+    print(f"Solved in {nsteps} steps")
+
+#    nsteps, oracle = eval_strategy()
+#    print(f"Average number of steps over samples: {np.mean(nsteps)}")
+#    print(f"Maximum number of steps over samples: {np.max(nsteps)}")
+#    print(f"Average oracle score over samples: {np.mean(oracle)}")
+#    print(f"Average difference between strategy and oracle: {np.mean(nsteps - oracle)}")
