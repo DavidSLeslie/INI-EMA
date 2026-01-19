@@ -80,28 +80,24 @@ def nonmyopic_num_to_observe(char, world, discount_factor=1.0):
     loc = char.location
     obs_range = char.range
 
-    observees = [[x,y] for x in range(max(0, loc[0] - obs_range), min(world.gridwidth - 1, loc[0] + obs_range) + 1)
+    new_observees = [[x,y] for x in range(max(0, loc[0] - obs_range), min(world.gridwidth - 1, loc[0] + obs_range) + 1)
                         for y in range(max(0, loc[1] - obs_range), min(world.gridheight - 1, loc[1] + obs_range) + 1)
                         if world.obs_mask[x][y] == 0]
-    #observees = [[x,y] for x in range(world.gridwidth) for y in range(world.gridheight) 
-     #             if world.obs_mask[x][y] == 0 and abs(x - loc[0])<=obs_range and abs(y - loc[1]) <= obs_range]
     
     discount = 1.0
-    num_observees = len(observees)
-    num_new_observees = num_observees
-    score = discount*num_observees
-
+    num_new_observees = len(new_observees)
+    score = discount*num_new_observees
+    observees = new_observees.copy()
+ 
     # Now fix obs_range to be the longest range in the game - this is somewhat arbitrary
     obs_range = max([c.range for c in world.characters])
 
     while num_new_observees > 0:
          # Add all cells observable from those discovered the previous step
+        prev_new_observees = new_observees.copy()
         new_observees = []
-        for loc in observees:
+        for loc in prev_new_observees:
             new_observees.extend(
- #               [[x,y] for x in range(world.gridwidth) for y in range(world.gridheight) 
- #                   if [x,y] not in observees and [x,y] not in new_observees and world.obs_mask[x][y] == 0 
- #                   and abs(x - loc[0])<=obs_range and abs(y - loc[1]) <= obs_range]
                 [[x,y] for x in range(max(0, loc[0] - obs_range), min(world.gridwidth - 1, loc[0] + obs_range) + 1)
                         for y in range(max(0, loc[1] - obs_range), min(world.gridheight - 1, loc[1] + obs_range) + 1)
                         if world.obs_mask[x][y] == 0
@@ -111,16 +107,13 @@ def nonmyopic_num_to_observe(char, world, discount_factor=1.0):
         num_new_observees = len(new_observees)
         discount *= discount_factor
         score += discount*(num_new_observees)
-
-        if num_new_observees == 0:
-            more_to_observe = False
-        
+       
         observees.extend(new_observees)
 
     return score
         
 
-def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-5],myopic=True,render=False,max_steps=1000,**kwargs):
+def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-5],myopic=True,render=False,max_steps=1000,discount_factor=0.5,**kwargs):
     """
     Linear features based strategy
     The features are:
@@ -140,7 +133,7 @@ def linear_features_strategy(world: ActivationGameWorld,weights=[1,-1,-5],myopic
             if myopic:
                 f1 = count_num_to_observe(char,world)
             else:
-                f1 = nonmyopic_num_to_observe(char,world,discount_factor=0.5)
+                f1 = nonmyopic_num_to_observe(char,world,discount_factor=discount_factor)
             paths = find_paths_to_enchant(char,world)
             action_matrix.extend([[f1,path[0],path[1],path[2]] for path in paths])
         feature_matrix = np.array([a[:-1] for a in action_matrix])
