@@ -208,6 +208,93 @@ def oracle_strategy(world: ActivationGameWorld, render=False, **kwargs):
     _, oracle_steps = oracle_score(world)
     return oracle_steps
 
+def WeightedDepthFirst(world: ActivationGameWorld):
+    """
+    A depth-first search strategy for the Activation Game.
+    """
+
+    # Get all the characters that are enchanted at the start of the search
+    # Store them in a list against key 0 in the stack dictionary
+    stack = {0: [char for char in world.characters if char.isEnchanted]}
+
+    # Create Gaussian heatmap i.e., prioritise hidden points nearer the centre
+    x, y = np.meshgrid(np.linspace(-1, 1, world.gridheight),
+                    np.linspace(-1, 1, world.gridwidth))
+    dst = np.sqrt(x**2 + y**2)
+    # Smaller sigma - narrower gaussian. 
+    sigma = 0.3
+    # Changing muu from zero gives a decentralised gaussian
+    muu = 0
+    # Normal part of the Gaussian function
+    normal = 1 / (2 * np.pi * sigma**2)
+    # Calculating Gaussian filter
+    gaussian_heatmap = 100*(np.exp(-((dst - muu)**2 / (2.0 * sigma**2))) * normal)
+    gaussian_heatmap_inverse = np.max(gaussian_heatmap) - gaussian_heatmap + 1 
+    
+ 
+    while not world.is_solved():
+        # Get the list of most recently added characters
+        level = max(stack.keys())
+        chars = stack[level]
+        num_to_obs = [count_num_to_observe_weighted(char,world,gaussian_heatmap_inverse) for char in stack[level]]
+
+        # Select the character that can observe the maximum number of new cells
+        max_index = np.argmax(num_to_obs)
+        char = chars.pop(max_index)
+        num = num_to_obs.pop(max_index)
+
+        # Instead of actively removing chars from the stack
+        # If we are at a level and no chars have any new cells to observe
+        # we can just delete that level from the stack and go back to try a lower level
+        if num == 0:
+            del stack[level]
+            continue
+
+        # If we've taken the last character at this level, remove the level
+        if len(chars) == 0:
+            del stack[level]
+
+        if not char.isEnchanted:
+            # Find the possible enchanters
+            enchanters = [c for c in world.characters if char in c.couldEnchant and c.isEnchanted]
+            # Activate the character using the first enchanter for now (I believe it's unimportant)
+            world.step([enchanters[0].location, char.location])
+            print
+
+        # Register who is currently observed so we can easily find the newly observed chars
+        currently_observed = [c for c in world.characters if c.isObserved]
+        # Do the sensing action
+        world.step([char.location, "Sense"])
+        # print(char.location)
+        # Work out who is newly observed
+        now_observed = [c for c in world.characters if c.isObserved]
+        newly_observed = [c for c in now_observed if c not in currently_observed]
+        # Add the newly observed characters to the stack
+        if len(newly_observed)>0:
+            stack[level + 1] = newly_observed
+    # world.render()
+    return world.nsteps
+
+
+def count_num_to_observe_weighted(char, world,gaussian_heatmap):
+    """
+    Count the number of new cells that could be observed by the character
+    """
+    min_x = max(0, char.location[0] - char.range)
+    max_x = min(world.gridwidth - 1, char.location[0] + char.range)
+    min_y = max(0, char.location[1] - char.range)
+    max_y = min(world.gridheight - 1, char.location[1] + char.range)
+
+    count = np.zeros((world.gridwidth, world.gridheight))
+    for x in range(min_x, max_x + 1):
+        for y in range(min_y, max_y + 1):
+            if world.obs_mask[x][y] == 0:
+                count[x][y] = int(gaussian_heatmap[x][y])
+
+    total_weighted_sum = np.sum(count)
+    
+    return total_weighted_sum
+
 
 def eval_strategy(strategies=[DepthFirst,oracle_strategy], nsamples=10, **kwargs):
     """
